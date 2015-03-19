@@ -13,29 +13,37 @@ window.onload = function() {
     
     "use strict";
     
-    var game = new Phaser.Game( 800, 600, Phaser.AUTO, 'game', { preload: preload, create: create, update: update, render: render } );
+    var game = new Phaser.Game( 800, 800, Phaser.AUTO, 'game', { preload: preload, create: create, update: update, render: render } );
     
     function preload() {
         // Loads images
-        game.load.image( 'world', 'assets/ForestBackground.png' );
-        game.load.image( 'wizard', 'assets/Mage.png');
-        game.load.image( 'monster', 'assets/Specter.png');
-        game.load.image( 'magic', 'assets/Boltshot.png');
+        game.load.image( 'world', 'assets/CityBackground.png' );
+        game.load.image( 'you', 'assets/Guy.png');
+        game.load.image( 'car', 'assets/Car.png');
+        game.load.image( 'hatguy', 'assets/Owner.png');
+        game.load.image( 'citizen1', 'assets/Mystery1.png');
+        game.load.image( 'citizen2', 'assets/Mystery2.png');
         
         // loads sound
-        game.load.audio( 'castSound', 'assets/magicshot.mp3');
         game.load.audio( 'backgroundMusic', 'assets/AnimalCrossing-TownHall.ogg');
     }
     
     //background image
     var world;
     
-    //player and monster sprites
+    //player sprite
     var player;
-    var enemies;
     
-    //player's current score
-    var score;
+    //owner
+    var owner;
+    
+    //enemies (moving cars are not fun)
+    var enemies;
+    var enemyTimer = 500;
+    var nextEnemy = 0;
+    
+    //other people in the city
+    var people;
     
     //game over message (and player death)
     var lost;
@@ -46,90 +54,108 @@ window.onload = function() {
     var cursors;
     
     //sounds
-    var fx;
     var music;
     
-    //related to firing
-    var bolts;
-    var nextFire = 0;
-    var fireRate = 300;
+    //timer of the game
+    var timer;
+    var timerText;
+    var timerStyle;
+    var minutes;
+    var seconds;
+    var timerActive = true;
     
-    //controls the player's blank periods
-    var blank = true;
-    var blankCount;
-    var blankDuration;
-    var blankCoolDown;
+    //for other people
+    var renderText = "";
+    var renderTime = 500;
+    var renderDisappear;
+    var renderX = 0;
+    var renderY = 0;
+    var renderStyle;
     
     function create() {
+        game.world.setBounds(0, 0, 1600, 1600);
         game.physics.startSystem(Phaser.Physics.ARCADE);
         
-        // creates background, player, and monsters
-        world = game.add.tileSprite(0, 0, 800, 600, 'world');
-        player = game.add.sprite( game.world.centerX, game.world.centerY, 'wizard' );
+        // creates background, player, and other sprites
+        world = game.add.tileSprite(0, 0, 1600, 1600, 'world');
+        player = game.add.sprite( 250, 250, 'you' );
+        player.anchor.setTo( 0.5, 0.5 );
+        game.physics.enable( player, Phaser.Physics.ARCADE );
+        player.body.collideWorldBounds = true;
+        
         
         enemies = game.add.group();
         enemies.enableBody = true;
         enemies.physicsBodyType = Phaser.Physics.ARCADE;
-        createEnemies();
+        enemies.createMultiple(20, 'car', 0, false);
+        enemies.setAll('anchor.x', 0.5);
+        enemies.setAll('anchor.y', 0.5);
+        enemies.setAll('outOfBoundsKill', true);
+        enemies.setAll('checkWorldBounds', true);
         
+        owner = game.add.sprite(400 + game.rnd.integer() % 1200, 400 + game.rnd.integer() % 1200, 'hatguy');
+        owner.anchor.setTo( 0.5, 0.5 );
+        game.physics.enable( owner, Phaser.Physics.ARCADE );
+        owner.body.collideWorldBounds = true;
         
-        // Create a sprite at the center of the screen using the 'logo' image.
-        // Anchor the sprite at its center, as opposed to its top-left corner.
-        // so it will be truly centered.
-        player.anchor.setTo( 0.5, 0.5 );
-        
-        // Turn on the arcade physics engine for sprites.
-        game.physics.enable( player, Phaser.Physics.ARCADE );
-        // Make it bounce off of the world bounds.
-        player.body.collideWorldBounds = true;
-        
-        
-        // adds magic bolts
-        bolts = game.add.group();
-        bolts.enableBody = true;
-        bolts.physicsBodyType = Phaser.Physics.ARCADE;
-        bolts.createMultiple(30, 'magic', 0, false);
-        bolts.setAll('anchor.x', 0.5);
-        bolts.setAll('anchor.y', 0.5);
-        bolts.setAll('outOfBoundsKill', true);
-        bolts.setAll('checkWorldBounds', true);
+        people = game.add.group();
+        people.enableBody = true;
+        people.physicsBodyType = Phaser.Physics.ARCADE;
+        createPeople();
         
         // Player controls
         cursors = game.input.keyboard.createCursorKeys();
         
         // Adds sound
-        fx = game.add.audio('castSound');
         music = game.add.audio('backgroundMusic', 1, true);
         music.play('', 0, 1, true);
         
-        // player's blank moment parameters(initial)
-        blankCount = 0;
-        blankDuration = 200;
-        blankCoolDown = blankDuration + 500;
-        
         //initializes score and player's 1 life
-        score = 0;
         isAlive = true;
         
         //creates game over
         style = { font: "65px Arial", fill: "#ff0044", align: "center" };
+        
+        //centers camera on player
+        game.camera.follow(player);
+        game.camera.deadzone = new Phaser.Rectangle(150, 150, 500, 300);
+        game.camera.focusOnXY(0, 0);
+        
+        //initializes timer
+        timer = game.time.now+90000;
+        timerStyle = { font: "40px Arial", fill: "#0000ff", align: "center" }
+        timerText = game.add.text(400, 30, "1:30", timerStyle);
+        timerText.fixedToCamera = true;
+        timerText.anchor.setTo(0.5, 0.5);
+        
+        //initializes citizen reaction text
+        renderStyle = { font: "12px Arial", fill: "#000000", align: "center" }
+        renderText = game.add.text(0, 0, "", renderStyle);
+        renderText.anchor.setTo(0.5, 0.5);
     }
     
-    function createEnemies()
+    function createPeople()
     {
         //modified from Invaders
-        for(var y = 0; y < 20; y++)
+        for(var y = 0; y < 10; y++)
         {
-            var enemy = enemies.create(10, 10, 'monster');
-            enemy.anchor.setTo(0.5, 0.5);
-            enemy.body.bounce.set(1);
-            enemy.body.velocity.x = game.rnd.integer() % 200;
-            enemy.body.velocity.y = game.rnd.integer() % 200;
-            enemy.body.collideWorldBounds = true;
+            var person = people.create(10, 10, 'citizen1');
+            person.anchor.setTo(0.5, 0.5);
+            var tempX = game.rnd.integer() % 1600;
+            var tempY = game.rnd.integer() % 1600;
+            person.reset(tempX, tempY);
+            person.body.collideWorldBounds = true;
         }
         
-        enemies.x = 50;
-        enemies.y = 50;
+        for(var y = 0; y < 10; y++)
+        {
+            var person = people.create(10, 10, 'citizen2');
+            person.anchor.setTo(0.5, 0.5);
+            var tempX = game.rnd.integer() % 1600;
+            var tempY = game.rnd.integer() % 1600;
+            person.reset(tempX, tempY);
+            person.body.collideWorldBounds = true;
+        }
     }
     
     function update() {
@@ -150,96 +176,109 @@ window.onload = function() {
         else if (cursors.down.isDown)
         {
             player.body.velocity.y = 150;
-        }
+        }      
         
-        //controls when the player blanks out
-        blankCount += 1;
-        if((blank) && (blankCount > blankDuration))
-        {
-            blank = false;
-        }
+        //now to check enemies
+        game.physics.arcade.overlap(enemies, player, monsterHandler, null, this);
+        game.physics.arcade.overlap(people, player, otherPeopleHandler, null, this);
+        game.physics.arcade.overlap(owner, player, ownerHandler, null, this);
         
-        if(blankCount > blankCoolDown)
-        {
-            blankCount = 0;
-            blank = true;
-            blankDuration = game.rnd.integer() % 200 + 200;
-            blankCoolDown = game.rnd.integer() % 500 + 500;
-        }
+        createEnemy();
         
-        //controls player firing
-        if ((game.input.activePointer.isDown) && isAlive)
+        //updates timer
+        if(timerActive)
         {
-            //  now to check if you're suffering from amnesia
-            if(!blank)
+            var timeLeft = timer - game.time.now;
+            minutes = parseInt(timeLeft)/60000;
+            seconds = (parseInt(timeLeft)/1000) % 60;
+            if(seconds >= 10)
+                timerText.setText(parseInt(minutes) + ":" + parseInt(seconds));
+            else
+                timerText.setText(parseInt(minutes) + ":0" + parseInt(seconds));
+
+            if((timeLeft <= 0) && isAlive)
             {
-                castMagic();
+                timeUp();
             }
         }
         
-        //now to check enemies
-        game.physics.arcade.overlap(bolts, enemies, magicHandler, null, this);
-        game.physics.arcade.overlap(enemies, player, monsterHandler, null, this);
-        
-        //revives enemies if all are dead (ALL AT ONCE!)
-        if(!enemies.getFirstAlive())
+        //lets you know if you didn't find the right person
+        if(game.time.now > renderDisappear)
         {
-            startWave();
+            renderText.setText("");
         }
     }
     
-    function castMagic() {
-        if (game.time.now > nextFire && bolts.countDead() > 0)
+    function createEnemy()
+    {
+        if (game.time.now > nextEnemy && enemies.countDead() > 0)
         {
-            nextFire = game.time.now + fireRate;
-
-            var bolt = bolts.getFirstExists(false);
-
-            bolt.reset(player.x, player.y);
-
-            bolt.rotation = game.physics.arcade.moveToPointer(bolt, 1000, game.input.activePointer, 500);
+            var XY = (game.rnd.integer() % 2);
+            var direction = (game.rnd.integer() % 2);
+            var position = (game.rnd.integer() % 2);
             
-            fx.play();
+            nextEnemy = game.time.now + enemyTimer;
+            var enemy = enemies.getFirstExists(false);
+            
+            if(XY === 1)
+            {
+                enemy.reset(direction * 1800 - 100, 450 + 800*position - 100*direction);
+                enemy.angle = 0;
+                enemy.body.velocity.x = 500 - 1000*direction;
+            }
+            
+            else
+            {
+                enemy.reset(450 + 800*position - 100*direction, direction * 1800 - 100);
+                enemy.angle = 90;
+                enemy.body.velocity.y = -500 + 1000*direction;
+            }
         }
     }
     
-    function magicHandler (enemy, bolt) {
-
-        bolt.kill();
-        enemy.kill();
-        score += 20;
-    }
-    
+    //handles player collision with cars
     function monsterHandler(player, enemy)
     {
         player.kill();
         isAlive = false;
-        lost = game.add.text(game.world.centerX, game.world.centerY, "GAME OVER!", style);
+        timerActive = false;
+        lost = game.add.text(400, 300, "GAME OVER!", style);
         lost.anchor.setTo( 0.5, 0.5);
+        lost.fixedToCamera = true;
     }
     
-    function startWave()
+    function ownerHandler(celluser, player)
     {
-        var resurrect = enemies.getFirstDead();
-        
-        while(resurrect)
-        {
-            resurrect.reset(0, 0);
-            resurrect.body.velocity.x = game.rnd.integer() % 200;
-            resurrect.body.velocity.y = game.rnd.integer() % 200;
-            resurrect = enemies.getFirstDead();
-        }
+        player.kill();
+        isAlive = false;
+        timerActive = false;
+        lost = game.add.text(400, 300, "Found the owner!", style);
+        lost.anchor.setTo( 0.5, 0.5);
+        lost.fixedToCamera = true;
     }
     
+    function otherPeopleHandler(player, citizen)
+    {
+        renderText.setText("That's not my phone.");
+        renderDisappear = game.time.now + renderTime;
+        renderX = citizen.body.x + 25;
+        renderY = citizen.body.y - 5;
+        renderText.x = renderX;
+        renderText.y = renderY;
+    }
     
-    function render() {
-
-        // notifys you about when you are blanking or not
-        if(blank)
-            game.debug.text('Wait, how do I cast spells again?', 32, 32);
-        else
-            game.debug.text('Oh, now I remember! Prepare to die monsters!', 32, 32)
-            
-        game.debug.text('Score: ' + score, 32, 580);
+    //game ends
+    function timeUp()
+    {
+        player.kill();
+        isAlive = false;
+        timerActive = false;
+        lost = game.add.text(400, 300, "GAME OVER!", style);
+        lost.anchor.setTo( 0.5, 0.5);
+        lost.fixedToCamera = true;
+    }
+    
+    function render() 
+    {
     }
 };
