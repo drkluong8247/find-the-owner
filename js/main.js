@@ -23,6 +23,7 @@ window.onload = function() {
         game.load.image( 'hatguy', 'assets/Owner.png');
         game.load.image( 'citizen1', 'assets/Mystery1.png');
         game.load.image( 'citizen2', 'assets/Mystery2.png');
+        game.load.image( 'phone', 'assets/CellPhone.png');
         
         // loads sound
         game.load.audio( 'backgroundMusic', 'assets/AnimalCrossing-TownHall.ogg');
@@ -34,8 +35,12 @@ window.onload = function() {
     //player sprite
     var player;
     
-    //owner
+    //owner of cell phone
     var owner;
+    
+    //cell phone stats
+    var cellphone;
+    var foundCellPhone;
     
     //enemies (moving cars are not fun)
     var enemies;
@@ -76,14 +81,14 @@ window.onload = function() {
         game.world.setBounds(0, 0, 1600, 1600);
         game.physics.startSystem(Phaser.Physics.ARCADE);
         
-        // creates background, player, and other sprites
+        // creates background and player
         world = game.add.tileSprite(0, 0, 1600, 1600, 'world');
         player = game.add.sprite( 250, 250, 'you' );
         player.anchor.setTo( 0.5, 0.5 );
         game.physics.enable( player, Phaser.Physics.ARCADE );
         player.body.collideWorldBounds = true;
         
-        
+        // creates cars
         enemies = game.add.group();
         enemies.enableBody = true;
         enemies.physicsBodyType = Phaser.Physics.ARCADE;
@@ -93,11 +98,31 @@ window.onload = function() {
         enemies.setAll('outOfBoundsKill', true);
         enemies.setAll('checkWorldBounds', true);
         
+        //creates owner
         owner = game.add.sprite(400 + game.rnd.integer() % 1200, 400 + game.rnd.integer() % 1200, 'hatguy');
+        while((owner.x%800 > 300) && (owner.x%800 < 500))
+        {
+            owner.x = game.rnd.integer() % 1600;
+        }
+        while((owner.y%800 > 300) && (owner.y%800 < 500))
+        {
+            owner.y = game.rnd.integer() % 1600;
+        }
+        //bounds checking (no right-minded citizen stands in the middle of a road
         owner.anchor.setTo( 0.5, 0.5 );
         game.physics.enable( owner, Phaser.Physics.ARCADE );
         owner.body.collideWorldBounds = true;
+        owner.body.velocity.x = 100;
+        owner.body.velocity.y = 100;
+        owner.body.bounce.set(1);
         
+        //cell phone
+        cellphone = game.add.sprite(player.x + (game.rnd.integer() % 100 + 100), player.y + (game.rnd.integer() % 100 + 100), 'phone');
+        game.physics.enable( cellphone, Phaser.Physics.ARCADE );
+        cellphone.anchor.setTo( 0.5, 0.5 );
+        foundCellPhone = false;
+        
+        //creates other people in the city (wide open dull place)
         people = game.add.group();
         people.enableBody = true;
         people.physicsBodyType = Phaser.Physics.ARCADE;
@@ -143,8 +168,23 @@ window.onload = function() {
             person.anchor.setTo(0.5, 0.5);
             var tempX = game.rnd.integer() % 1600;
             var tempY = game.rnd.integer() % 1600;
+            person.body.bounce.set(1);
+            
+            while((tempX%800 > 300) && (tempX%800 < 500))
+            {
+                var tempX = game.rnd.integer() % 1600;
+            }
+            while((tempY%800 > 300) && (tempY%800 < 500))
+            {
+                var tempY = game.rnd.integer() % 1600;
+            }
+            //bounds checking (no right-minded citizen stands in the middle of a road
+            
             person.reset(tempX, tempY);
             person.body.collideWorldBounds = true;
+            
+            person.body.velocity.x = 50;
+            person.body.velocity.y = 50;
         }
         
         for(var y = 0; y < 10; y++)
@@ -153,8 +193,22 @@ window.onload = function() {
             person.anchor.setTo(0.5, 0.5);
             var tempX = game.rnd.integer() % 1600;
             var tempY = game.rnd.integer() % 1600;
+            
+            while((tempX%800 > 300) && (tempX%800 < 500))
+            {
+                var tempX = game.rnd.integer() % 1600;
+            }
+            while((tempY%800 > 300) && (tempY%800 < 500))
+            {
+                var tempY = game.rnd.integer() % 1600;
+            }
+            //bounds checking (no right-minded citizen stands in the middle of a road
+            
             person.reset(tempX, tempY);
             person.body.collideWorldBounds = true;
+            person.body.bounce.set(1);
+            person.body.velocity.x = 50;
+            person.body.velocity.y = 50;
         }
     }
     
@@ -182,6 +236,7 @@ window.onload = function() {
         game.physics.arcade.overlap(enemies, player, monsterHandler, null, this);
         game.physics.arcade.overlap(people, player, otherPeopleHandler, null, this);
         game.physics.arcade.overlap(owner, player, ownerHandler, null, this);
+        game.physics.arcade.overlap(cellphone, player, phoneHandler, null, this);
         
         createEnemy();
         
@@ -247,16 +302,42 @@ window.onload = function() {
         lost.fixedToCamera = true;
     }
     
-    function ownerHandler(celluser, player)
+    //player picks up phone
+    function phoneHandler(phone, player)
     {
-        player.kill();
-        isAlive = false;
-        timerActive = false;
-        lost = game.add.text(400, 300, "Found the owner!", style);
-        lost.anchor.setTo( 0.5, 0.5);
-        lost.fixedToCamera = true;
+        phone.kill();
+        foundCellPhone = true;
+        renderText.setText("I found the owner's phone!");
+        renderDisappear = game.time.now + renderTime;
+        renderText.x = player.x;
+        renderText.y = player.y - 5;
     }
     
+    //handles when player finds owner
+    function ownerHandler(celluser, player)
+    {
+        if(foundCellPhone)
+        {
+            player.kill();
+            isAlive = false;
+            timerActive = false;
+            lost = game.add.text(400, 300, "Found the owner!", style);
+            lost.anchor.setTo( 0.5, 0.5);
+            lost.fixedToCamera = true;
+        }
+        
+        else
+        {
+            renderText.setText("I'm in a hurry.");
+            renderDisappear = game.time.now + renderTime;
+            renderX = celluser.body.x + 25;
+            renderY = celluser.body.y - 5;
+            renderText.x = renderX;
+            renderText.y = renderY;
+        }
+    }
+    
+    //handles collision with other people
     function otherPeopleHandler(player, citizen)
     {
         renderText.setText("That's not my phone.");
